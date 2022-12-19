@@ -1,4 +1,4 @@
-FROM machina/base-alpine
+FROM behren/machina-base-alpine:latest
 
 RUN apk --update add --no-cache libmagic
 
