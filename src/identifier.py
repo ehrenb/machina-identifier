@@ -10,7 +10,6 @@ from machina.core.worker import Worker
 from machina.core.models.relationships.extracts import Extracts
 from machina.core.models.relationships.retypedto import RetypedTo
 
-
 class Identifier(Worker):
     """Identifier is the entrypoint to the system
     therefore, it does require any types, and can only be
@@ -21,7 +20,7 @@ class Identifier(Worker):
 
     def __init__(self, *args, **kwargs):
         super(Identifier, self).__init__(*args, **kwargs)
-        
+
     def callback(self, data, properties):
         data = json.loads(data)
         binary_data = data['data']
@@ -60,7 +59,7 @@ class Identifier(Worker):
 
         # hash data_decoded
         hashes = _hash_data(data_decoded)
-
+        
         # dir is time stamp
         ts = datetime.now()
         ts_fs = ts.strftime("%Y%m%d%H%M%S%f")
@@ -157,13 +156,23 @@ class Identifier(Worker):
 
         if resolved_type and supported_type:
             # publish to resolved type routing key
-            channel = self.get_channel(self.config['rabbitmq'])
-            channel.basic_publish(exchange='machina',
-                routing_key=resolved_type,
-                body=json.dumps(body))
+            # rmq_channel.basic_publish(
+            #     exchange='machina',
+            #     routing_key=resolved_type,
+            #     body=json.dumps(body))
 
-            channel = self.get_channel(self.config['rabbitmq'])
+            self.publish(
+                json.dumps(body),
+                [resolved_type]
+            )
+
+            # channel = self.get_channel(self.config['rabbitmq'])
             # publish to wildcard routing key
-            channel.basic_publish(exchange='machina',
-                routing_key='*',
-                body=json.dumps(body))
+            # rmq_channel.basic_publish(
+            #     exchange='machina',
+            #     routing_key='*',
+            #     body=json.dumps(body))
+            self.publish(
+                json.dumps(body),
+                ['*']
+            )
