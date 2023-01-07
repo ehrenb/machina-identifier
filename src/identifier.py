@@ -3,12 +3,12 @@ from datetime import datetime
 import json
 import hashlib
 import os
+from pprint import pformat
 
 import magic
 
 from machina.core.worker import Worker
-from machina.core.models.relationships.extracts import Extracts
-from machina.core.models.relationships.retypedto import RetypedTo
+from machina.core.models import Artifact, Base
 
 class Identifier(Worker):
     """Identifier is the entrypoint to the system
@@ -24,6 +24,8 @@ class Identifier(Worker):
     def callback(self, data, properties):
         data = json.loads(data)
         binary_data = data['data']
+
+        self.logger.debug(pformat(data))
 
         def _hash_data(data):
             result = {}
@@ -63,7 +65,8 @@ class Identifier(Worker):
         # dir is time stamp
         ts = datetime.now()
         ts_fs = ts.strftime("%Y%m%d%H%M%S%f")
-        ts_db = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+        # ts_db = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+
         binary_dir = os.path.join(self.config['paths']['binaries'], ts_fs)
         if not os.path.isdir(binary_dir):
             os.makedirs(binary_dir)
@@ -82,9 +85,12 @@ class Identifier(Worker):
         # If type was specified, take that as ground truth
         if 'type' in data.keys():
             resolved_type = data['type']
-            resolved = dict(type=resolved_type,
-                            reason="provided",
-                            value=None)
+            resolved = dict(
+                type=resolved_type,
+                reason="provided",
+                value=None
+            )
+
             if resolved_type in self.config['types']['available_types']:
                 supported_type = True
         # Else, attempt to derive it using magic
@@ -102,9 +108,11 @@ class Identifier(Worker):
 
         self.logger.info(f"resolved to: {resolved}")
 
-        body = {'ts': ts_fs,
-                'hashes': hashes,
-                'type': resolved_type}
+        body = {
+            'ts': ts_fs,
+            'hashes': hashes,
+            'type': resolved_type
+        }
 
         if supported_type:
             # Create DB entry with the supported Node type
@@ -113,28 +121,38 @@ class Identifier(Worker):
             # These are coupled tightly, a Node class' element_type attribute is named the same as a type
             # and the search ignores case
             c = self.resolve_db_node_cls(resolved_type)
-            node = c.objects.create(md5=body['hashes']['md5'],
-                                    sha256=body['hashes']['sha256'],
-                                    size=size,
-                                    ts=ts_db,
-                                    type=resolved_type)
-        else:
-            # Create a generic entry (Artifact)
-            node = self.graph.artifacts.create(md5=body['hashes']['md5'],
+            # node = c.objects.create(md5=body['hashes']['md5'],
+            #                         sha256=body['hashes']['sha256'],
+            #                         size=size,
+            #                         ts=ts_db,
+            #                         type=resolved_type)
+            node = c(
+                md5=body['hashes']['md5'],
                 sha256=body['hashes']['sha256'],
                 size=size,
-                ts=ts_db,
-                type=resolved_type)
+                ts=ts,
+                type=resolved_type).save()
+        else:
+            # Create a generic entry (Artifact)
+            node = Artifact(md5=body['hashes']['md5'],
+                sha256=body['hashes']['sha256'],
+                size=size,
+                ts=ts,
+                type=resolved_type).save()
 
-        body['id'] = node._id
-
+        # body['id'] = node._id
+        body['uid'] = node.uid #node.id
+        
         # If specified, link to another run's artifact
         # This is useful during the retyping process
         # Or to assert a link manually
         origin_node = None
         if 'origin' in data.keys():
             # Retrieve the originating Node cls from the database
-            origin_node = self.graph.get_vertex(data['origin']['id'])
+            # origin_node = self.graph.get_vertex(data['origin']['id'])
+            # resolve the originating node's OGMY class type
+            origin_node_cls = self.resolve_db_node_cls(data['origin']['type'])
+            origin_node = origin_node_cls.nodes.get_or_none(uid=data['origin']['uid'])
 
         # If the resolved originating hash matches the given hash
         # this is a retype of a previous Node.
@@ -144,15 +162,18 @@ class Identifier(Worker):
                 # create relationship (retype) btwn a and origin_a
                 # https://stackoverflow.com/questions/51703088/pyorient-create-an-edge-in-orientdb-without-using-raw-query
                 self.logger.info("Establishing retype link")
-                self.create_edge(RetypedTo, origin_node._id, node._id)
+
+                # self.create_edge(RetypedTo, origin_node._id, node._id)
+                retyped_rel = origin_node.retyped.connect(node).save()
+
                 # e.g.  rat_eats_pea = g.eats.create(queried_rat, queried_pea, modifier='lots')
 
             else:
                 # create relationship (extraction) btwn a and origin_a
                 # graph.create_edge(Friend, orientRecord1, orientRecord2)
                 self.logger.info("Establishing extraction link")
-                self.create_edge(Extracts, origin_node._id, node._id)
-
+                # self.create_edge(Extracts, origin_node._id, node._id)
+                extract_rel = origin_node.extracts.connect(node).save()
 
         if resolved_type and supported_type:
             # publish to resolved type routing key
