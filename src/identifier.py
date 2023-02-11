@@ -9,6 +9,7 @@ import magic
 
 from machina.core.worker import Worker
 from machina.core.models import Artifact, Base
+from machina.core.models.utils import resolve_db_node_cls
 
 class Identifier(Worker):
     """Identifier is the entrypoint to the system
@@ -123,7 +124,7 @@ class Identifier(Worker):
         # Dynamic class resolution for Machina type -> OrientDB Node class
         # These are coupled tightly, a Node class' element_type attribute is named the same as a type
         # and the search ignores case
-        c = self.resolve_db_node_cls(resolved_type)
+        c = resolve_db_node_cls(resolved_type)
         node = c(
             md5=body['hashes']['md5'],
             sha256=body['hashes']['sha256'],
@@ -141,7 +142,7 @@ class Identifier(Worker):
             # Retrieve the originating Node cls from the database
             # origin_node = self.graph.get_vertex(data['origin']['id'])
             # resolve the originating node's OGMY class type
-            origin_node_cls = self.resolve_db_node_cls(data['origin']['type'])
+            origin_node_cls = resolve_db_node_cls(data['origin']['type'])
             origin_node = origin_node_cls.nodes.get_or_none(uid=data['origin']['uid'])
 
         # If the resolved originating hash matches the given hash
