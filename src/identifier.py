@@ -28,14 +28,14 @@ class Identifier(Worker):
 
         self.logger.debug(pformat(data))
 
-        def _hash_data(data):
+        def _hash_data(data_to_hash: bytes) -> dict:
             result = {}
             for a in self.config['worker']['hash_algorithms']:
-                h = hashlib.new(a, binary_data.encode()).hexdigest()
+                h = hashlib.new(a, data_to_hash).hexdigest()
                 result[a] = h
             return result
 
-        def _resolve_supported_type(fpath):
+        def _resolve_supported_type(fpath: str) -> dict:
             """attempt to resolve the type of a binary file
             against the high-level types loaded into the configuration
             Return a justification (e.g. the type, and the justification (e.g. mime, detailed)
