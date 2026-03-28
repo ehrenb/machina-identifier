@@ -115,6 +115,11 @@ class Identifier(Worker):
                 
         self.logger.info(f"resolved to: {resolved}")
 
+        # Rename the file to append the resolved type as extension
+        binary_fpath_typed = f"{binary_fpath}.{resolved_type}"
+        os.rename(binary_fpath, binary_fpath_typed)
+        binary_fpath = binary_fpath_typed
+
         body = {
             'ts': ts_fs,
             'hashes': hashes,
